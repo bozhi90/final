@@ -1,0 +1,56 @@
+import pyb, sensor, image, time, math
+
+thresholds = [(10, 100, 15, 48, -9, 42)]      # 路徑的顏色
+RED_LED_PIN = 1
+pyb.LED(RED_LED_PIN).on()
+
+sensor.reset()
+sensor.set_pixformat(sensor.RGB565)
+sensor.set_framesize(sensor.QVGA)
+sensor.skip_frames(time = 2000)
+sensor.set_auto_gain(False)         # must be turned off for color tracking
+sensor.set_auto_whitebal(False)     # must be turned off for color tracking
+clock = time.clock()
+
+uart = pyb.UART(3,9600,timeout_char=1000)
+uart.init(9600,bits=8,parity = None, stop=1, timeout_char=1000)
+
+while(True):            # 重復執行
+    clock.tick()        # 計算fsp
+    find_line = 0
+    find_tag  = 0
+    cnt_line  = 0
+    cnt_tag   = 0
+    img = sensor.snapshot()     # 紀錄影像
+    pyb.LED(RED_LED_PIN).off()###
+#--------------------------------------------------------------------------------------------------#
+
+    # 找路徑、200pixels以上、範圍(x, y, w, h) = (0, 0, 320, 30)
+    blobs = img.find_blobs(thresholds, pixels_threshold = 200, roi = [0, 0, 320, 30])
+    if blobs:                           # 如果找到目標顏色
+        find_line = 1
+        for b in blobs:                 # 重複執行目標區域
+            img.draw_rectangle(b[0:4])  # 標出方框
+            img.draw_cross(b[5], b[6])  # 標出中心
+            cnt_line = b[5]
+    else:
+        find_line = 0
+
+#--------------------------------------------------------------------------------------------------#
+
+    tags = img.find_apriltags()
+    if tags:
+        find_tag = 1
+        for tag in tags:
+          img.draw_rectangle(tag.rect(), color = (255, 0, 0))
+          img.draw_cross(tag.cx(), tag.cy(), color = (0, 255, 0))
+          cnt_tag = tag.x_translation()
+    else:
+        find_tag = 0
+
+#--------------------------------------------------------------------------------------------------#
+    pyb.LED(RED_LED_PIN).on()###
+    uart.write(("/OpenMV_scan/run %d %d %d %d\r\n" %(find_line, cnt_line, find_tag, cnt_tag)).encode())
+    print("/OpenMV_scan/run %d %d %d %d\n" %(find_line, cnt_line, find_tag, cnt_tag))
+
+    print(clock.fps())
